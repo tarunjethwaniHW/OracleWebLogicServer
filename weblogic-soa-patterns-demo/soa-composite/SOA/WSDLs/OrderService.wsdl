@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Order Service WSDL - Entry Point to SOA Composite
+
+    LINKING DETECTION POINTS:
+    =========================
+
+    1. <service name="OrderService">
+       → Matches @WebServiceClient(name = "OrderService") in Java producer
+       → Matches SERVICE_QNAME in JaxWsClientProducer.java
+
+    2. targetNamespace="http://example.com/order/service"
+       → Matches @WebServiceClient(targetNamespace = "...") in Java producer
+
+    3. <soap:address location="...">
+       → Matches wsdlLocation in @WebServiceClient
+       → Matches @Value("${soa.order.endpoint}") after property resolution
+
+    4. <portType name="OrderServicePortType">
+       → Matches interface OrderServicePortType in Java
+       → Matches getPort(QName, OrderServicePortType.class)
+
+    5. <operation name="processOrder">
+       → Matches port.processOrder() method call in Java
+       → Matches BPEL <receive operation="processOrder">
+-->
+<definitions name="OrderService"
+             xmlns="http://schemas.xmlsoap.org/wsdl/"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+             xmlns:tns="http://example.com/order/service"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             targetNamespace="http://example.com/order/service">
+
+    <!-- TYPES -->
+    <types>
+        <xsd:schema targetNamespace="http://example.com/order/service">
+            <xsd:element name="ProcessOrderRequest">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element name="orderId" type="xsd:string"/>
+                        <xsd:element name="customerId" type="xsd:string"/>
+                        <xsd:element name="amount" type="xsd:decimal"/>
+                        <xsd:element name="items" type="tns:ItemList" minOccurs="0"/>
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+
+            <xsd:element name="ProcessOrderResponse">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element name="status" type="xsd:string"/>
+                        <xsd:element name="confirmationNumber" type="xsd:string"/>
+                        <xsd:element name="estimatedDelivery" type="xsd:date" minOccurs="0"/>
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+
+            <xsd:element name="CancelOrderRequest">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element name="orderId" type="xsd:string"/>
+                        <xsd:element name="reason" type="xsd:string" minOccurs="0"/>
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+
+            <xsd:element name="CancelOrderResponse">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element name="success" type="xsd:boolean"/>
+                        <xsd:element name="message" type="xsd:string"/>
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+
+            <xsd:element name="GetOrderStatusRequest">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element name="orderId" type="xsd:string"/>
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+
+            <xsd:element name="GetOrderStatusResponse">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element name="orderId" type="xsd:string"/>
+                        <xsd:element name="status" type="xsd:string"/>
+                        <xsd:element name="lastUpdated" type="xsd:dateTime"/>
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+
+            <xsd:complexType name="ItemList">
+                <xsd:sequence>
+                    <xsd:element name="item" type="tns:OrderItem" maxOccurs="unbounded"/>
+                </xsd:sequence>
+            </xsd:complexType>
+
+            <xsd:complexType name="OrderItem">
+                <xsd:sequence>
+                    <xsd:element name="productId" type="xsd:string"/>
+                    <xsd:element name="quantity" type="xsd:int"/>
+                    <xsd:element name="price" type="xsd:decimal"/>
+                </xsd:sequence>
+            </xsd:complexType>
+        </xsd:schema>
+    </types>
+
+    <!-- MESSAGES -->
+    <message name="ProcessOrderRequest">
+        <part name="parameters" element="tns:ProcessOrderRequest"/>
+    </message>
+    <message name="ProcessOrderResponse">
+        <part name="parameters" element="tns:ProcessOrderResponse"/>
+    </message>
+    <message name="CancelOrderRequest">
+        <part name="parameters" element="tns:CancelOrderRequest"/>
+    </message>
+    <message name="CancelOrderResponse">
+        <part name="parameters" element="tns:CancelOrderResponse"/>
+    </message>
+    <message name="GetOrderStatusRequest">
+        <part name="parameters" element="tns:GetOrderStatusRequest"/>
+    </message>
+    <message name="GetOrderStatusResponse">
+        <part name="parameters" element="tns:GetOrderStatusResponse"/>
+    </message>
+
+    <!-- PORT TYPE - Interface definition
+         LINKING: Java producer calls methods that match these operation names
+    -->
+    <portType name="OrderServicePortType">
+        <!-- LINKING: Matches port.processOrder() in JaxWsClientProducer.java -->
+        <operation name="processOrder">
+            <input message="tns:ProcessOrderRequest"/>
+            <output message="tns:ProcessOrderResponse"/>
+        </operation>
+
+        <!-- LINKING: Matches port.cancelOrder() in JaxWsClientProducer.java -->
+        <operation name="cancelOrder">
+            <input message="tns:CancelOrderRequest"/>
+            <output message="tns:CancelOrderResponse"/>
+        </operation>
+
+        <!-- LINKING: Matches port.getOrderStatus() in JaxWsClientProducer.java -->
+        <operation name="getOrderStatus">
+            <input message="tns:GetOrderStatusRequest"/>
+            <output message="tns:GetOrderStatusResponse"/>
+        </operation>
+    </portType>
+
+    <!-- BINDING -->
+    <binding name="OrderServiceBinding" type="tns:OrderServicePortType">
+        <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+        <operation name="processOrder">
+            <soap:operation soapAction="http://example.com/order/processOrder"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+        </operation>
+
+        <operation name="cancelOrder">
+            <soap:operation soapAction="http://example.com/order/cancelOrder"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+        </operation>
+
+        <operation name="getOrderStatus">
+            <soap:operation soapAction="http://example.com/order/getOrderStatus"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+        </operation>
+    </binding>
+
+    <!-- SERVICE - Entry Point
+         LINKING: This is where Java producers connect
+    -->
+    <service name="OrderService">
+        <documentation>
+            Order Processing Service - Entry point for Java clients.
+
+            Java producers call this service:
+            - JaxWsClientProducer.java: @WebServiceClient(name = "OrderService")
+            - WebServiceTemplateProducer.java: @Value("${soa.order.endpoint}")
+
+            This service is wired to OrderProcess.bpel via composite.xml
+        </documentation>
+
+        <!-- LINKING:
+             - soap:address location matches wsdlLocation in @WebServiceClient
+             - URL contains "/soa-infra/services/" = Oracle SOA Suite
+        -->
+        <port name="OrderServicePort" binding="tns:OrderServiceBinding">
+            <soap:address location="http://soa-server:7001/soa-infra/services/default/OrderProcessingComposite/OrderService"/>
+        </port>
+    </service>
+</definitions>

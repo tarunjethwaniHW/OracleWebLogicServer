@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Order Processing BPEL - Orchestrates the order workflow
+
+    LINKING DETECTION POINTS:
+    =========================
+
+    1. <receive operation="processOrder">
+       → ENTRY POINT: Matches Java producer's port.processOrder()
+       → Matches WSDL <operation name="processOrder">
+
+    2. <invoke partnerLink="PaymentService" operation="processPayment">
+       → EXIT POINT: Calls external Payment service
+       → Matches JaxWsEndpointConsumer.java
+
+    3. <invoke partnerLink="InventoryService" operation="checkInventory">
+       → EXIT POINT: Calls external Inventory service
+
+    4. <reply> at the end
+       → Returns response to Java producer
+
+    WORKFLOW:
+    =========
+    Java Producer → <receive> → [BPEL Logic] → <invoke> → Java Consumer
+                        ↑                          ↓
+                   Entry Point              Exit Points
+-->
+<process name="OrderProcess"
+         targetNamespace="http://example.com/order/bpel"
+         xmlns="http://docs.oasis-open.org/wsbpel/2.0/process/executable"
+         xmlns:tns="http://example.com/order/bpel"
+         xmlns:ord="http://example.com/order/service"
+         xmlns:pay="http://example.com/payment/service"
+         xmlns:inv="http://example.com/inventory/service"
+         xmlns:bpelx="http://schemas.oracle.com/bpel/extension">
+
+    <!-- IMPORT WSDLs
+         LINKING: These imports connect BPEL to WSDL contracts
+    -->
+    <import namespace="http://example.com/order/service"
+            location="../WSDLs/OrderService.wsdl"
+            importType="http://schemas.xmlsoap.org/wsdl/"/>
+
+    <import namespace="http://example.com/payment/service"
+            location="../WSDLs/PaymentService.wsdl"
+            importType="http://schemas.xmlsoap.org/wsdl/"/>
+
+    <import namespace="http://example.com/inventory/service"
+            location="../WSDLs/InventoryService.wsdl"
+            importType="http://schemas.xmlsoap.org/wsdl/"/>
+
+    <!-- PARTNER LINKS
+         LINKING: Connect BPEL to external services
+         - "Client" = incoming calls from Java producers
+         - "PaymentService" = outgoing calls to Java consumers
+    -->
+    <partnerLinks>
+        <!-- Client partner link - receives calls from Java producers
+             LINKING: JaxWsClientProducer.java → WSDL → This partnerLink
+        -->
+        <partnerLink name="Client"
+                     partnerLinkType="tns:OrderServicePLT"
+                     myRole="OrderServiceProvider"/>
+
+        <!-- Payment partner link - calls Java consumer
+             LINKING: This → composite.xml wire → PaymentService.wsdl → JaxWsEndpointConsumer.java
+        -->
+        <partnerLink name="PaymentService"
+                     partnerLinkType="tns:PaymentServicePLT"
+                     partnerRole="PaymentServiceProvider"/>
+
+        <!-- Inventory partner link - calls inventory service -->
+        <partnerLink name="InventoryService"
+                     partnerLinkType="tns:InventoryServicePLT"
+                     partnerRole="InventoryServiceProvider"/>
+
+        <!-- JMS partner link for async notification -->
+        <partnerLink name="NotificationJMS"
+                     partnerLinkType="tns:JMSNotificationPLT"
+                     partnerRole="NotificationSender"/>
+    </partnerLinks>
+
+    <!-- VARIABLES -->
+    <variables>
+        <!-- Input from Java producer -->
+        <variable name="orderRequest" messageType="ord:ProcessOrderRequest"/>
+        <variable name="orderResponse" messageType="ord:ProcessOrderResponse"/>
+
+        <!-- Payment service call -->
+        <variable name="paymentRequest" messageType="pay:ProcessPaymentRequest"/>
+        <variable name="paymentResponse" messageType="pay:ProcessPaymentResponse"/>
+
+        <!-- Inventory service call -->
+        <variable name="inventoryRequest" messageType="inv:CheckInventoryRequest"/>
+        <variable name="inventoryResponse" messageType="inv:CheckInventoryResponse"/>
+    </variables>
+
+    <!-- MAIN SEQUENCE -->
+    <sequence name="MainSequence">
+
+        <!-- ═══════════════════════════════════════════════════════════════════════
+             RECEIVE - ENTRY POINT
+             LINKING: This is where Java producer's call lands
+             - JaxWsClientProducer.java: port.processOrder(request)
+             - WebServiceTemplateProducer.java: webServiceTemplate.marshalSendAndReceive()
+             ═══════════════════════════════════════════════════════════════════════ -->
+        <receive name="ReceiveOrder"
+                 partnerLink="Client"
+                 operation="processOrder"
+                 variable="orderRequest"
+                 createInstance="yes">
+            <documentation>
+                ENTRY POINT: Receives order request from Java producers.
+
+                This receive matches:
+                - JaxWsClientProducer.java: port.processOrder(request)
+                - WSDL OrderService.wsdl: operation name="processOrder"
+            </documentation>
+        </receive>
+
+        <!-- Log received order -->
+        <bpelx:exec name="LogOrderReceived" language="java">
+            <![CDATA[
+                System.out.println("BPEL: Order received - " +
+                    getVariableData("orderRequest", "parameters", "/ord:orderId"));
+            ]]>
+        </bpelx:exec>
+
+        <!-- Check Inventory -->
+        <assign name="PrepareInventoryRequest">
+            <copy>
+                <from>$orderRequest.parameters/ord:orderId</from>
+                <to>$inventoryRequest.parameters/inv:orderId</to>
+            </copy>
+        </assign>
+
+        <invoke name="CheckInventory"
+                partnerLink="InventoryService"
+                operation="checkInventory"
+                inputVariable="inventoryRequest"
+                outputVariable="inventoryResponse">
+            <documentation>
+                Call Inventory Service to check stock availability.
+            </documentation>
+        </invoke>
+
+        <!-- Conditional: Only process payment if inventory available -->
+        <if name="IfInventoryAvailable">
+            <condition>$inventoryResponse.parameters/inv:available = 'true'</condition>
+
+            <sequence name="ProcessPaymentSequence">
+                <!-- Prepare Payment Request -->
+                <assign name="PreparePaymentRequest">
+                    <copy>
+                        <from>$orderRequest.parameters/ord:orderId</from>
+                        <to>$paymentRequest.parameters/pay:orderId</to>
+                    </copy>
+                    <copy>
+                        <from>$orderRequest.parameters/ord:amount</from>
+                        <to>$paymentRequest.parameters/pay:amount</to>
+                    </copy>
+                </assign>
+
+                <!-- ═══════════════════════════════════════════════════════════════
+                     INVOKE - EXIT POINT TO JAVA CONSUMER
+                     LINKING: This calls JaxWsEndpointConsumer.java
+                     ═══════════════════════════════════════════════════════════════ -->
+                <invoke name="ProcessPayment"
+                        partnerLink="PaymentService"
+                        operation="processPayment"
+                        inputVariable="paymentRequest"
+                        outputVariable="paymentResponse">
+                    <documentation>
+                        EXIT POINT: Calls Payment Service (Java consumer).
+
+                        This invoke links to:
+                        - composite.xml: reference name="PaymentServiceRef"
+                        - PaymentService.wsdl: service name="PaymentService"
+                        - JaxWsEndpointConsumer.java: @WebService(serviceName = "PaymentService")
+                        - JaxWsEndpointConsumer.java: @WebMethod(operationName = "processPayment")
+                    </documentation>
+                </invoke>
+
+                <!-- Prepare success response -->
+                <assign name="PrepareSuccessResponse">
+                    <copy>
+                        <from>'COMPLETED'</from>
+                        <to>$orderResponse.parameters/ord:status</to>
+                    </copy>
+                    <copy>
+                        <from>$paymentResponse.parameters/pay:authorizationCode</from>
+                        <to>$orderResponse.parameters/ord:confirmationNumber</to>
+                    </copy>
+                </assign>
+            </sequence>
+
+            <else>
+                <!-- Inventory not available -->
+                <assign name="PrepareFailedResponse">
+                    <copy>
+                        <from>'FAILED_NO_INVENTORY'</from>
+                        <to>$orderResponse.parameters/ord:status</to>
+                    </copy>
+                </assign>
+            </else>
+        </if>
+
+        <!-- Send JMS notification (async)
+             LINKING: This sends to JMS queue that JmsListenerConsumer.java listens on
+        -->
+        <invoke name="SendNotification"
+                partnerLink="NotificationJMS"
+                operation="sendNotification"
+                inputVariable="orderResponse">
+            <documentation>
+                Send async notification via JMS.
+                Links to: JmsListenerConsumer.java @JmsListener(destination = "jms/NotificationQueue")
+            </documentation>
+        </invoke>
+
+        <!-- ═══════════════════════════════════════════════════════════════════════
+             REPLY - Send response back to Java producer
+             ═══════════════════════════════════════════════════════════════════════ -->
+        <reply name="ReplyToClient"
+               partnerLink="Client"
+               operation="processOrder"
+               variable="orderResponse">
+            <documentation>
+                Send response back to Java producer.
+                The response goes back to:
+                - JaxWsClientProducer.java: OrderResponse response = port.processOrder(request)
+            </documentation>
+        </reply>
+
+    </sequence>
+</process>

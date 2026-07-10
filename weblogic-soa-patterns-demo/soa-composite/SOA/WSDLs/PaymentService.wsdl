@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Payment Service WSDL - External Service called by BPEL
+
+    LINKING DETECTION POINTS:
+    =========================
+
+    1. This WSDL is referenced by BPEL <invoke partnerLink="PaymentService">
+
+    2. <service name="PaymentService">
+       → Matches JaxWsEndpointConsumer.java: @WebService(serviceName = "PaymentService")
+
+    3. <operation name="processPayment">
+       → Matches BPEL <invoke operation="processPayment">
+       → Matches JaxWsEndpointConsumer.java: @WebMethod(operationName = "processPayment")
+
+    4. <soap:address location="...">
+       → Where BPEL sends the request
+       → This points to Java consumer endpoint
+-->
+<definitions name="PaymentService"
+             xmlns="http://schemas.xmlsoap.org/wsdl/"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+             xmlns:tns="http://example.com/payment/service"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             targetNamespace="http://example.com/payment/service">
+
+    <!-- TYPES -->
+    <types>
+        <xsd:schema targetNamespace="http://example.com/payment/service">
+            <xsd:element name="PaymentRequest">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element name="orderId" type="xsd:string"/>
+                        <xsd:element name="amount" type="xsd:decimal"/>
+                        <xsd:element name="cardNumber" type="xsd:string"/>
+                        <xsd:element name="cardHolder" type="xsd:string"/>
+                        <xsd:element name="expiryDate" type="xsd:string"/>
+                        <xsd:element name="cvv" type="xsd:string" minOccurs="0"/>
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+
+            <xsd:element name="PaymentResponse">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element name="orderId" type="xsd:string"/>
+                        <xsd:element name="approved" type="xsd:boolean"/>
+                        <xsd:element name="authorizationCode" type="xsd:string" minOccurs="0"/>
+                        <xsd:element name="message" type="xsd:string"/>
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+
+            <xsd:element name="RefundRequest">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element name="originalOrderId" type="xsd:string"/>
+                        <xsd:element name="authorizationCode" type="xsd:string"/>
+                        <xsd:element name="refundAmount" type="xsd:decimal"/>
+                        <xsd:element name="reason" type="xsd:string" minOccurs="0"/>
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+
+            <xsd:element name="RefundResponse">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element name="success" type="xsd:boolean"/>
+                        <xsd:element name="refundId" type="xsd:string" minOccurs="0"/>
+                        <xsd:element name="message" type="xsd:string"/>
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+        </xsd:schema>
+    </types>
+
+    <!-- MESSAGES -->
+    <message name="ProcessPaymentRequest">
+        <part name="parameters" element="tns:PaymentRequest"/>
+    </message>
+    <message name="ProcessPaymentResponse">
+        <part name="parameters" element="tns:PaymentResponse"/>
+    </message>
+    <message name="RefundPaymentRequest">
+        <part name="parameters" element="tns:RefundRequest"/>
+    </message>
+    <message name="RefundPaymentResponse">
+        <part name="parameters" element="tns:RefundResponse"/>
+    </message>
+
+    <!-- PORT TYPE
+         LINKING: Operations here match JaxWsEndpointConsumer.java @WebMethod annotations
+    -->
+    <portType name="PaymentServicePortType">
+        <!-- LINKING:
+             → BPEL <invoke operation="processPayment">
+             → JaxWsEndpointConsumer.java: @WebMethod(operationName = "processPayment")
+        -->
+        <operation name="processPayment">
+            <input message="tns:ProcessPaymentRequest"/>
+            <output message="tns:ProcessPaymentResponse"/>
+        </operation>
+
+        <operation name="refundPayment">
+            <input message="tns:RefundPaymentRequest"/>
+            <output message="tns:RefundPaymentResponse"/>
+        </operation>
+    </portType>
+
+    <!-- BINDING -->
+    <binding name="PaymentServiceBinding" type="tns:PaymentServicePortType">
+        <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+
+        <operation name="processPayment">
+            <soap:operation soapAction="http://example.com/payment/processPayment"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+        </operation>
+
+        <operation name="refundPayment">
+            <soap:operation soapAction="http://example.com/payment/refundPayment"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+        </operation>
+    </binding>
+
+    <!-- SERVICE
+         LINKING: This points to JaxWsEndpointConsumer.java deployment
+    -->
+    <service name="PaymentService">
+        <documentation>
+            Payment Service - Java endpoint that receives calls from BPEL.
+
+            This service is implemented by:
+            - JaxWsEndpointConsumer.java: @WebService(serviceName = "PaymentService")
+
+            BPEL calls this via:
+            - <invoke partnerLink="PaymentService" operation="processPayment">
+        </documentation>
+
+        <port name="PaymentServicePort" binding="tns:PaymentServiceBinding">
+            <!-- This URL points to the Java consumer endpoint -->
+            <soap:address location="http://payment-server:8080/services/PaymentService"/>
+        </port>
+    </service>
+</definitions>

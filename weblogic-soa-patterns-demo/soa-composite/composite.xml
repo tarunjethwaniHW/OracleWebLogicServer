@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SOA Composite Application Descriptor
+
+    THIS IS THE KEY LINKING FILE!
+    =============================
+
+    composite.xml wires together:
+    - Exposed services (entry points from Java producers)
+    - BPEL components (orchestration logic)
+    - External references (exit points to Java consumers)
+    - JMS adapters (for async messaging)
+
+    LINKING DETECTION:
+    ==================
+    1. <service> → Entry points (Java producer calls here)
+    2. <component> → BPEL process implementation
+    3. <reference> → Exit points (BPEL calls Java consumers here)
+    4. <wire> → Connects services, components, and references
+-->
+<composite name="OrderProcessingComposite"
+           revision="1.0"
+           mode="active"
+           state="on"
+           xmlns="http://xmlns.oracle.com/sca/1.0"
+           xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:wsp="http://schemas.xmlsoap.org/ws/2004/09/policy"
+           xmlns:orawsp="http://schemas.oracle.com/ws/2006/01/policy">
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════
+         IMPORTS
+         ═══════════════════════════════════════════════════════════════════════════ -->
+    <import namespace="http://example.com/order/service"
+            location="SOA/WSDLs/OrderService.wsdl"
+            importType="wsdl"/>
+    <import namespace="http://example.com/payment/service"
+            location="SOA/WSDLs/PaymentService.wsdl"
+            importType="wsdl"/>
+    <import namespace="http://example.com/inventory/service"
+            location="SOA/WSDLs/InventoryService.wsdl"
+            importType="wsdl"/>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════
+         EXPOSED SERVICES - Entry Points (Java Producers → SOA)
+
+         LINKING:
+         - JaxWsClientProducer.java calls these endpoints
+         - WebServiceTemplateProducer.java calls these endpoints
+         ═══════════════════════════════════════════════════════════════════════════ -->
+    <service name="OrderService" ui:wsdlLocation="SOA/WSDLs/OrderService.wsdl">
+        <documentation>
+            ENTRY POINT: Java producers connect here.
+
+            Matched by:
+            - JaxWsClientProducer.java: @WebServiceClient(name = "OrderService")
+            - WebServiceTemplateProducer.java: @Value("${soa.order.endpoint}")
+        </documentation>
+
+        <interface.wsdl interface="http://example.com/order/service#wsdl.interface(OrderServicePortType)"/>
+
+        <!-- LINKING: This URL is what Java producers connect to -->
+        <binding.ws port="http://example.com/order/service#wsdl.endpoint(OrderService/OrderServicePort)"
+                    location="http://soa-server:7001/soa-infra/services/default/OrderProcessingComposite/OrderService"/>
+    </service>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════
+         COMPONENTS - BPEL Process
+
+         LINKING: Contains the orchestration logic
+         ═══════════════════════════════════════════════════════════════════════════ -->
+    <component name="OrderProcessBPEL">
+        <documentation>
+            BPEL component that orchestrates the order processing workflow.
+
+            Contains:
+            - <receive> that accepts orders from Java producers
+            - <invoke> that calls Java consumers (Payment, Inventory)
+            - <reply> that sends response back to Java producers
+        </documentation>
+
+        <implementation.bpel src="SOA/BPEL/OrderProcess.bpel"/>
+
+        <!-- Service provided by BPEL (entry point) -->
+        <service name="client">
+            <interface.wsdl interface="http://example.com/order/service#wsdl.interface(OrderServicePortType)"/>
+        </service>
+
+        <!-- References to external services (BPEL <invoke> targets) -->
+        <reference name="PaymentService">
+            <interface.wsdl interface="http://example.com/payment/service#wsdl.interface(PaymentServicePortType)"/>
+        </reference>
+
+        <reference name="InventoryService">
+            <interface.wsdl interface="http://example.com/inventory/service#wsdl.interface(InventoryServicePortType)"/>
+        </reference>
+
+        <reference name="NotificationJMS">
+            <interface.wsdl interface="http://example.com/notification#wsdl.interface(NotificationPortType)"/>
+        </reference>
+    </component>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════
+         EXTERNAL REFERENCES - Exit Points (SOA → Java Consumers)
+
+         LINKING:
+         - BPEL <invoke partnerLink="PaymentService"> calls here
+         - This connects to JaxWsEndpointConsumer.java
+         ═══════════════════════════════════════════════════════════════════════════ -->
+    <reference name="PaymentServiceRef" ui:wsdlLocation="SOA/WSDLs/PaymentService.wsdl">
+        <documentation>
+            EXIT POINT: BPEL calls Java consumer via this reference.
+
+            Links to:
+            - JaxWsEndpointConsumer.java: @WebService(serviceName = "PaymentService")
+            - The binding.ws location points to Java endpoint
+        </documentation>
+
+        <interface.wsdl interface="http://example.com/payment/service#wsdl.interface(PaymentServicePortType)"/>
+
+        <!-- LINKING: This URL points to JaxWsEndpointConsumer.java deployment -->
+        <binding.ws port="http://example.com/payment/service#wsdl.endpoint(PaymentService/PaymentServicePort)"
+                    location="http://payment-server:8080/services/PaymentService"/>
+    </reference>
+
+    <reference name="InventoryServiceRef" ui:wsdlLocation="SOA/WSDLs/InventoryService.wsdl">
+        <documentation>
+            EXIT POINT: BPEL calls Inventory service.
+        </documentation>
+
+        <interface.wsdl interface="http://example.com/inventory/service#wsdl.interface(InventoryServicePortType)"/>
+
+        <binding.ws port="http://example.com/inventory/service#wsdl.endpoint(InventoryService/InventoryServicePort)"
+                    location="http://inventory-server:8080/services/InventoryService"/>
+    </reference>
+
+    <!-- JMS Adapter Reference for async notification -->
+    <reference name="NotificationJMSRef">
+        <documentation>
+            JMS Adapter to send notifications.
+
+            Links to:
+            - JmsListenerConsumer.java: @JmsListener(destination = "jms/NotificationQueue")
+        </documentation>
+
+        <interface.wsdl interface="http://example.com/notification#wsdl.interface(NotificationPortType)"/>
+
+        <binding.jca config="jms/NotificationAdapter.jca"/>
+    </reference>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════════
+         WIRING - Connects everything together
+
+         THIS IS CRITICAL FOR LINKING!
+         Follow the wires to trace the flow.
+         ═══════════════════════════════════════════════════════════════════════════ -->
+
+    <!-- Wire: Exposed OrderService → BPEL Component
+         LINKING: Java producer → OrderService → OrderProcessBPEL
+    -->
+    <wire>
+        <source.uri>OrderService</source.uri>
+        <target.uri>OrderProcessBPEL/client</target.uri>
+    </wire>
+
+    <!-- Wire: BPEL Component → Payment Reference
+         LINKING: BPEL <invoke partnerLink="PaymentService"> → PaymentServiceRef → Java consumer
+    -->
+    <wire>
+        <source.uri>OrderProcessBPEL/PaymentService</source.uri>
+        <target.uri>PaymentServiceRef</target.uri>
+    </wire>
+
+    <!-- Wire: BPEL Component → Inventory Reference -->
+    <wire>
+        <source.uri>OrderProcessBPEL/InventoryService</source.uri>
+        <target.uri>InventoryServiceRef</target.uri>
+    </wire>
+
+    <!-- Wire: BPEL Component → JMS Notification
+         LINKING: BPEL → JMS Queue → JmsListenerConsumer.java
+    -->
+    <wire>
+        <source.uri>OrderProcessBPEL/NotificationJMS</source.uri>
+        <target.uri>NotificationJMSRef</target.uri>
+    </wire>
+</composite>
