@@ -16,19 +16,19 @@ weblogic-soa-patterns-demo/
 ├── java-producers/                              # OUTGOING: Java → WebLogic/SOA
 │   └── src/main/java/com/example/producer/
 │       ├── soap/
-│       │   ├── JaxWsClientProducer.java         # @WebServiceClient (100% SOAP)
-│       │   ├── WebServiceTemplateProducer.java  # Spring WS (95%)
-│       │   └── SaajClientProducer.java          # Low-level SOAP (90%)
+│       │   ├── JaxWsClientProducer.java         # @WebServiceClient (SOAP)
+│       │   ├── WebServiceTemplateProducer.java  # Spring WS 
+│       │   └── SaajClientProducer.java          # Low-level SOAP ()
 │       └── jms/
 │           ├── WebLogicJndiProducer.java        # 100% WebLogic-specific (t3://)
-│           └── JmsTemplateProducer.java         # Spring JmsTemplate (85%)
+│           └── JmsTemplateProducer.java         # Spring JmsTemplate ()
 │
 ├── java-consumers/                              # INCOMING: WebLogic/SOA → Java
 │   └── src/main/java/com/example/consumer/
 │       ├── soap/
-│       │   └── JaxWsEndpointConsumer.java       # @WebService endpoint (95%)
+│       │   └── JaxWsEndpointConsumer.java       # @WebService endpoint ()
 │       └── jms/
-│           └── JmsListenerConsumer.java         # @JmsListener (95%)
+│           └── JmsListenerConsumer.java         # @JmsListener ()
 │
 ├── soa-composite/                               # Oracle SOA artifacts
 │   ├── composite.xml                            # KEY LINKING FILE!
@@ -67,9 +67,9 @@ These patterns are **ONLY** found in Oracle WebLogic environments. If you detect
 
 | Producer Type | File | Key Pattern | Confidence |
 |---------------|------|-------------|------------|
-| JAX-WS Client | `JaxWsClientProducer.java` | `@WebServiceClient`, `port.processOrder()` | 100% |
-| Spring WS | `WebServiceTemplateProducer.java` | `marshalSendAndReceive()` | 95% |
-| SAAJ | `SaajClientProducer.java` | `SOAPConnection.call()` | 90% |
+| JAX-WS Client | `JaxWsClientProducer.java` | `@WebServiceClient`, `port.processOrder()` | |
+| Spring WS | `WebServiceTemplateProducer.java` | `marshalSendAndReceive()` |  |
+| SAAJ | `SaajClientProducer.java` | `SOAPConnection.call()` |  |
 
 ---
 
@@ -77,8 +77,8 @@ These patterns are **ONLY** found in Oracle WebLogic environments. If you detect
 
 | Type | File | Key Pattern | Confidence |
 |------|------|-------------|------------|
-| WebLogic JNDI | `WebLogicJndiProducer.java` | `WLInitialContextFactory`, `t3://` | 100% |
-| Spring JMS | `JmsTemplateProducer.java` | `jmsTemplate.convertAndSend()` | 85% |
+| WebLogic JNDI | `WebLogicJndiProducer.java` | `WLInitialContextFactory`, `t3://` | |
+| Spring JMS | `JmsTemplateProducer.java` | `jmsTemplate.convertAndSend()` |  |
 
 ---
 
@@ -86,8 +86,8 @@ These patterns are **ONLY** found in Oracle WebLogic environments. If you detect
 
 | Consumer Type | File | Key Pattern | Confidence |
 |---------------|------|-------------|------------|
-| SOAP Endpoint | `JaxWsEndpointConsumer.java` | `@WebService`, `@WebMethod` | 95% |
-| JMS Listener | `JmsListenerConsumer.java` | `@JmsListener(destination=...)` | 95% |
+| SOAP Endpoint | `JaxWsEndpointConsumer.java` | `@WebService`, `@WebMethod` |  |
+| JMS Listener | `JmsListenerConsumer.java` | `@JmsListener(destination=...)` | |
 
 ---
 
